@@ -8,7 +8,7 @@ import boto3
 
 
 ########################################################################################################################
-# CROSS ACCOUNT ROLE ASSUMPTION. THIS BLOCK OF CODE ALLOWS LAMBDA TO ASSUME A ROLE FROM OT-NETWORK-SHAREDSERVICE ACCOUNT
+# CROSS ACCOUNT ROLE ASSUMPTION. THIS BLOCK OF CODE ALLOWS LAMBDA TO ASSUME A ROLE FROM ACCOUNT A
 ########################################################################################################################
 
 REGION_NAME = "us-east-1"
@@ -34,7 +34,7 @@ def assume_role(arn, session=boto3, region_name='us-east-1', **sts_client_assume
         return session
 
 #########################################################################################################        
-# STEP 1 - LOOK  FOR PRIVATE CERTS ISSUED IN THIS ACCOUNT WHOSE DOMAIN NAME ENDS WITH ".onetechaws.otlocal".
+# STEP 1 - LOOK  FOR PRIVATE CERTS ISSUED IN ACCOUNT B WHOSE DOMAIN NAME ENDS WITH ".example.local".
 # STEP 2 - CHECK IF THE EXPIRY IS IN NEXT 45 DAYS. IF YES GRAB THE DOMAIN NAME.
 #########################################################################################################
 global sorted_cert,AccountBdomainname
@@ -45,7 +45,7 @@ def lambda_handler(event, context):
     #parsing the output given by response
     response = response['CertificateSummaryList']
     for i in range(len(response)):
-        if "onetechaws.otlocal" in response[i]["DomainName"]:
+        if "example.local" in response[i]["DomainName"]:
             AccountBcertarns = [response[i]["CertificateArn"]]
             AccountBdomains = [response[i]["DomainName"]]
             for j in range(len(AccountBcertarns)):
@@ -64,20 +64,20 @@ def lambda_handler(event, context):
                 # To renew certs expiring soon
                 if numberofdaysleft<=45:
                     print ("Expiry approaching")
-                    # Go To Account A (network account)
-                    session = assume_role(arn='arn:aws:iam::131396953364:role/ot-certrenewal-crossaccount-role')
+                    # Go To Account A
+                    session = assume_role(arn='Role-arn')
                     acm_client1  = session.client('acm')
-                    # To request new Cert with same domain name in Network A
-                    response3 = acm_client1.request_certificate(DomainName=AccountBdomainname, CertificateAuthorityArn='arn:aws:acm-pca:us-east-1:131396953364:certificate-authority/22407152-8d8f-441f-b720-1e19f5f72ab0')
+                    # To request new Cert with same domain name in Account A
+                    response3 = acm_client1.request_certificate(DomainName=AccountBdomainname, CertificateAuthorityArn='Subordinate-arn')
                     sorted_cert = response3["CertificateArn"]
                     print(sorted_cert)
-                    # To export the new cert in Network A
+                    # To export the new cert in Account A
                     exportingcertdetails(sorted_cert,AccountBdomainname)
                 else:
                     print("not approaching expiry ")
 
 def exportingcertdetails(AccountAlatestcertarn,AccountBdomainname):
-    session = assume_role(arn='arn:aws:iam::131396953364:role/ot-certrenewal-crossaccount-role')
+    session = assume_role(arn='Role-ARN')
     acm_client  = session.client('acm')
     response = acm_client.export_certificate(CertificateArn=AccountAlatestcertarn,Passphrase='test')
     cert = bytes(response['Certificate'], 'utf-8')
@@ -89,7 +89,7 @@ def exportingcertdetails(AccountAlatestcertarn,AccountBdomainname):
 
 def importingcertcredentials(a,b,c,d):
     acm_client  = boto3.client('acm')
-    #listing issues certs in this account
+    #listing issues certs in Account B
     response = acm_client.list_certificates(CertificateStatuses=['ISSUED'])
     response = response['CertificateSummaryList']
     for i in range(len(response)):
